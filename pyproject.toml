@@ -1,0 +1,30 @@
+[project]
+name = "devflow-mcp"
+version = "0.1.0"
+description = "Local read-only MCP server exposing Jira (Server/DC) + GitLab data to Claude Code, with token hiding."
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=2.0",
+    "httpx>=0.26",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "respx>=0.21",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# Flat layout (modules at root) — list explicitly so editable install works
+# (setuptools auto-discovery fails with multiple top-level modules).
+[tool.setuptools]
+py-modules = ["server", "config", "http_common", "jira_client", "gitlab_client"]
+packages = ["tools"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
