@@ -16,7 +16,7 @@ ISSUE = {
     "key": "PROJ-123",
     "fields": {
         "summary": "Add geo regions",
-        "description": "x" * 4000,
+        "description": "x" * 9000,  # > DESC_MAX (8000) → still exercises truncation
         "status": {"name": "In Progress"},
         "issuetype": {"name": "Story"},
         "priority": {"name": "High"},
@@ -45,7 +45,10 @@ COMMENTS = {
 }
 
 
-def test_get_issue_trims_and_truncates():
+def test_get_issue_trims_and_truncates(monkeypatch):
+    import jira_client
+
+    monkeypatch.setattr(jira_client, "DESC_MAX", 500)  # decouple from prod default
     with respx.mock(base_url=BASE) as mock:
         mock.get("/rest/api/2/issue/PROJ-123").mock(return_value=httpx.Response(200, json=ISSUE))
         out = jira_tools.jira_get_issue("PROJ-123")
@@ -53,7 +56,18 @@ def test_get_issue_trims_and_truncates():
     assert out["status"] == "In Progress"
     assert out["assignee"] == "Avada Dev"
     assert out["components"] == ["cookie-bar"]
-    assert out["description"].endswith("chars]")  # truncated
+    assert out["description"].endswith("chars]")  # truncated (9000 > 500)
+
+
+def test_description_not_truncated_under_cap(monkeypatch):
+    import jira_client
+
+    monkeypatch.setattr(jira_client, "DESC_MAX", 20000)  # 9000 < cap → full
+    with respx.mock(base_url=BASE) as mock:
+        mock.get("/rest/api/2/issue/PROJ-123").mock(return_value=httpx.Response(200, json=ISSUE))
+        out = jira_tools.jira_get_issue("PROJ-123")
+    assert len(out["description"]) == 9000
+    assert not out["description"].endswith("chars]")
 
 
 def test_ticket_bundle_composes_everything():

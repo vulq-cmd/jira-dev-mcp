@@ -24,6 +24,10 @@ _BASE_ISSUE_FIELDS = (
 EXTRA_FIELDS = [f.strip() for f in os.getenv("JIRA_EXTRA_FIELDS", "").split(",") if f.strip()]
 DEFAULT_ISSUE_FIELDS = _BASE_ISSUE_FIELDS + ("," + ",".join(EXTRA_FIELDS) if EXTRA_FIELDS else "")
 
+# Description = the actual REQUIREMENT (often long tables of links/ACs) — don't lose it.
+# Default rộng rãi (20k). Set JIRA_DESC_MAX=0 để KHÔNG giới hạn (full description).
+DESC_MAX = int(os.getenv("JIRA_DESC_MAX", "20000"))
+
 
 def attachments_from_fields(f: dict) -> list:
     """Extract attachment METADATA (no content) from an issue's `fields`.
@@ -99,7 +103,7 @@ def trim_issue(issue: dict) -> dict:
         "components": [_name(c) for c in (f.get("components") or [])],
         "fixVersions": [_name(v) for v in (f.get("fixVersions") or [])],
         "parent": (f.get("parent") or {}).get("key"),
-        "description": truncate(f.get("description")),
+        "description": (truncate(f.get("description"), DESC_MAX) if DESC_MAX > 0 else f.get("description")),
         "created": f.get("created"),
         "updated": f.get("updated"),
     }
