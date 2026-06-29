@@ -71,3 +71,43 @@ if GITLAB_URL and GITLAB_TOKEN:
         verify=GITLAB_VERIFY_SSL,
         limits=httpx.Limits(max_keepalive_connections=5),
     )
+
+# --- Jira WRITE (opt-in) — default OFF nên server vẫn read-only -------------
+# Jira Server PAT kế thừa full quyền account (không có scope) → an toàn nằm ở
+# tool surface: chỉ transition status, allowlist, KHÔNG delete/edit field.
+JIRA_ENABLE_WRITE = os.getenv("JIRA_ENABLE_WRITE", "false").lower() in ("true", "1", "yes")
+JIRA_ALLOWED_TRANSITIONS = [
+    s.strip()
+    for s in os.getenv("JIRA_ALLOWED_TRANSITIONS", "To Do,Doing,Waiting To Test").split(",")
+    if s.strip()
+]
+
+# --- Notion (OPTIONAL) — đọc spec/docs đính trong ticket --------------------
+# Tạo internal integration + share page → token. Tools self-disable nếu chưa set.
+NOTION_TOKEN = os.getenv("NOTION_TOKEN")
+NOTION_VERSION = os.getenv("NOTION_VERSION", "2022-06-28")
+notion_client = None
+if NOTION_TOKEN:
+    notion_client = httpx.Client(
+        base_url="https://api.notion.com/v1",
+        headers={
+            "Authorization": f"Bearer {NOTION_TOKEN}",
+            "Notion-Version": NOTION_VERSION,
+            "Accept": "application/json",
+        },
+        timeout=JIRA_HTTP_TIMEOUT,
+        limits=httpx.Limits(max_keepalive_connections=5),
+    )
+
+# --- Figma (OPTIONAL) — render frame design ra ảnh để xem bằng vision -------
+# /images render server-side, frame to ở scale cao có thể >30s → timeout rộng hơn.
+FIGMA_TOKEN = os.getenv("FIGMA_TOKEN")
+FIGMA_HTTP_TIMEOUT = float(os.getenv("FIGMA_HTTP_TIMEOUT", "120"))
+figma_client = None
+if FIGMA_TOKEN:
+    figma_client = httpx.Client(
+        base_url="https://api.figma.com/v1",
+        headers={"X-Figma-Token": FIGMA_TOKEN, "Accept": "application/json"},
+        timeout=FIGMA_HTTP_TIMEOUT,
+        limits=httpx.Limits(max_keepalive_connections=5),
+    )

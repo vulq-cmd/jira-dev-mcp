@@ -22,6 +22,23 @@ ACTIVE_STATUSES = [
     s.strip() for s in os.getenv("JIRA_ACTIVE_STATUSES", "To Do,Doing").split(",") if s.strip()
 ]
 
+# Custom multi-user field "Assignees" (≠ standard single "assignee"). Tasks where
+# I'm in this field should also count as mine. Set "" to disable. Accepts a field
+# NAME (quoted in JQL) or a cf[id]/customfield_xxx reference (used as-is).
+ASSIGNEES_FIELD = os.getenv("JIRA_ASSIGNEES_FIELD", "Assignees").strip()
+
+
+def _assignees_jql_clause() -> str:
+    """Extra JQL OR-clause matching the multi-user Assignees field, or '' if disabled."""
+    if not ASSIGNEES_FIELD:
+        return ""
+    ref = (
+        ASSIGNEES_FIELD
+        if ASSIGNEES_FIELD.startswith(("cf[", "customfield_"))
+        else f'"{ASSIGNEES_FIELD}"'
+    )
+    return f" OR {ref} = currentUser()"
+
 
 @tool_safe
 def jira_get_issue(key: str, fields: str | None = None) -> dict:
@@ -94,7 +111,7 @@ def jira_search(jql: str, fields: str | None = None, limit: int = 25) -> dict:
         limit: Max issues to return (capped at 50).
     """
     limit = max(1, min(limit, 50))
-    field_list = fields or "summary,status,assignee,priority,issuetype,updated"
+    field_list = fields or "summary,status,assignee,priority,issuetype,parent,updated"
     collected: list = []
     start = 0
     total = 0
@@ -137,13 +154,15 @@ def jira_my_tasks(extra_jql: str | None = None, limit: int = 25) -> dict:
         limit: Max tasks to return.
     """
     statuses = ", ".join(f'"{s}"' for s in ACTIVE_STATUSES)
-    jql = f"assignee = currentUser() AND status in ({statuses})"
+    # Match standard assignee OR the multi-user "Assignees" field (tôi nằm trong đó).
+    jql = f"(assignee = currentUser(){_assignees_jql_clause()}) AND status in ({statuses})"
     if extra_jql:
         jql += f" AND ({extra_jql})"
     jql += " ORDER BY updated DESC"
     result = jira_search(jql, limit=limit)
     if isinstance(result, dict) and "issues" in result:
-        result["filter"] = f"assignee=me, status in {ACTIVE_STATUSES}"
+        scope = "assignee=me" + (f" hoặc {ASSIGNEES_FIELD} có me" if ASSIGNEES_FIELD else "")
+        result["filter"] = f"{scope}, status in {ACTIVE_STATUSES}"
     return result
 
 

@@ -130,6 +130,8 @@ def test_my_tasks_filters_assignee_and_active_statuses():
         out = jira_tools.jira_my_tasks()
     assert "currentUser()" in captured["jql"]
     assert '"To Do"' in captured["jql"] and '"Doing"' in captured["jql"]
+    # also matches the multi-user "Assignees" custom field, not just standard assignee
+    assert '"Assignees" = currentUser()' in captured["jql"]
     assert "filter" in out
 
 
