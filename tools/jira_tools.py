@@ -4,7 +4,9 @@ Each tool is wrapped with @tool_safe so any failure returns a masked error dict
 (no token leakage). Payloads are trimmed for token efficiency.
 """
 import os
+import re
 
+from http_common import mask_error
 from jira_client import (
     DEFAULT_ISSUE_FIELDS,
     attachments_from_fields,
@@ -26,6 +28,22 @@ ACTIVE_STATUSES = [
 # I'm in this field should also count as mine. Set "" to disable. Accepts a field
 # NAME (quoted in JQL) or a cf[id]/customfield_xxx reference (used as-is).
 ASSIGNEES_FIELD = os.getenv("JIRA_ASSIGNEES_FIELD", "Assignees").strip()
+
+
+# Q5/S1: ordering picker xác định ở SERVER (đừng để LLM tự xếp mỗi lần).
+# Doing (WIP đang làm dở) lên trước To Do; trong mỗi nhóm cụm theo app.
+_STATUS_ORDER = {"doing": 0, "in progress": 0, "to do": 1, "todo": 1, "open": 1}
+_APP_PREFIX_RE = re.compile(r"^\s*\[[^\]]*\]\s*\[([^\]]+)\]")  # bracket thứ 2 = [APP]
+
+
+def _status_rank(status: str | None) -> int:
+    return _STATUS_ORDER.get((status or "").strip().lower(), 2)
+
+
+def _app_hint(summary: str | None) -> str:
+    """ABBR app từ prefix `[Type][APP] ...` (multi-app → app đầu, để cụm)."""
+    m = _APP_PREFIX_RE.match(summary or "")
+    return m.group(1).split(",")[0].strip().upper() if m else ""
 
 
 def _assignees_jql_clause() -> str:
@@ -161,6 +179,14 @@ def jira_my_tasks(extra_jql: str | None = None, limit: int = 25) -> dict:
     jql += " ORDER BY updated DESC"
     result = jira_search(jql, limit=limit)
     if isinstance(result, dict) and "issues" in result:
+        issues = result["issues"] or []
+        # Gắn app_hint + sắp xếp xác định: Doing trước, cụm theo app, giữ updated-desc
+        # trong nhóm (sort ổn định + input đã ORDER BY updated DESC).
+        for i in issues:
+            i["app_hint"] = _app_hint(i.get("summary"))
+        issues.sort(key=lambda i: (_status_rank(i.get("status")), i.get("app_hint") or "~"))
+        result["issues"] = issues
+        result["ordered"] = "pre-sorted: Doing trước → To Do, cụm theo app_hint (cụm cha-con vẫn ưu tiên khi render)"
         scope = "assignee=me" + (f" hoặc {ASSIGNEES_FIELD} có me" if ASSIGNEES_FIELD else "")
         result["filter"] = f"{scope}, status in {ACTIVE_STATUSES}"
     return result
@@ -216,9 +242,12 @@ def jira_get_ticket_bundle(key: str) -> dict:
             }
             for c in comments[-10:]
         ]
-    except Exception:  # noqa: BLE001 - comments are best-effort
-        bundle["comment_total"] = 0
+    except Exception as exc:  # noqa: BLE001 - best-effort, but DON'T fake "0 comments"
+        # Critical: comments are where PM changes scope. A fetch failure must NOT
+        # look like "no comments" — else the brief shows 🟢 while missing scope.
         bundle["comments"] = []
+        bundle["comment_total"] = None  # unknown ≠ zero
+        bundle["comments_error"] = mask_error(exc, "Jira").get("error", "comment fetch failed")
 
     return bundle
 

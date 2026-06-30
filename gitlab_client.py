@@ -9,7 +9,7 @@ import inspect
 import urllib.parse
 
 from config import gitlab_client
-from http_common import build_tool_safe, truncate  # truncate re-exported for tools
+from http_common import build_tool_safe, get_with_retry, truncate  # re-exported for tools
 
 _tool_safe = build_tool_safe("GitLab")
 
@@ -47,8 +47,11 @@ def encode_path(file_path: str) -> str:
 
 
 def get_json(path: str, params: dict | None = None):
-    """GET a GitLab REST path and return parsed JSON. Raises on HTTP/transport error."""
-    resp = gitlab_client.get(path, params=params)
+    """GET a GitLab REST path and return parsed JSON. Raises on HTTP/transport error.
+
+    Retries transient failures (timeout/429/5xx) — GET is idempotent so safe.
+    """
+    resp = get_with_retry(gitlab_client, path, params=params)
     resp.raise_for_status()
     return resp.json()
 

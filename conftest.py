@@ -7,6 +7,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+# No transient-retry during tests (keep the suite fast + deterministic); the
+# retry path is covered explicitly in test_http_resilience.py.
+os.environ.setdefault("DEVFLOW_HTTP_RETRIES", "0")
+
 os.environ.setdefault("JIRA_BASE_URL", "https://jira.example.com")
 os.environ.setdefault("JIRA_PAT", "DUMMY_TEST_TOKEN_DO_NOT_LEAK")
 os.environ.setdefault("GITLAB_URL", "https://gitlab.example.com")

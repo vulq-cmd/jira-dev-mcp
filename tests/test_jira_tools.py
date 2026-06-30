@@ -135,6 +135,33 @@ def test_my_tasks_filters_assignee_and_active_statuses():
     assert "filter" in out
 
 
+def test_app_hint_and_status_rank_helpers():
+    assert jira_tools._app_hint("[DEV][WF] New banner") == "WF"
+    assert jira_tools._app_hint("[Support][CB, AC] fix") == "CB"  # multi-app → đầu tiên
+    assert jira_tools._app_hint("no prefix") == ""
+    assert jira_tools._status_rank("Doing") == 0 < jira_tools._status_rank("To Do")
+
+
+def test_my_tasks_orders_doing_first_then_by_app():
+    def _issue(key, summary, status):
+        return {"key": key, "fields": {"summary": summary, "status": {"name": status}}}
+
+    # input ở thứ tự updated-desc bất kỳ; kỳ vọng sort: Doing trước, cụm app
+    page = {"total": 4, "issues": [
+        _issue("A", "[DEV][WF] todo wf", "To Do"),
+        _issue("B", "[DEV][CB] doing cb", "Doing"),
+        _issue("C", "[DEV][WF] doing wf", "Doing"),
+        _issue("D", "[DEV][CB] todo cb", "To Do"),
+    ]}
+    with respx.mock(base_url=BASE) as mock:
+        mock.get("/rest/api/2/search").mock(return_value=httpx.Response(200, json=page))
+        out = jira_tools.jira_my_tasks()
+    order = [i["key"] for i in out["issues"]]
+    assert order == ["B", "C", "D", "A"]  # Doing{CB,WF} rồi ToDo{CB,WF}
+    assert out["issues"][0]["app_hint"] == "CB"
+    assert "ordered" in out
+
+
 def test_linked_issues_handles_inward():
     payload = {
         "key": "PROJ-1",

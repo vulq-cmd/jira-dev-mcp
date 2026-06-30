@@ -7,7 +7,7 @@ premise of this server. See config.jira_client for the authenticated client.
 import os
 
 from config import jira_client
-from http_common import build_tool_safe, truncate  # re-exported for tools
+from http_common import build_tool_safe, get_with_retry, truncate  # re-exported for tools
 
 # Decorator that masks any Jira tool failure into a safe error dict.
 tool_safe = build_tool_safe("Jira")
@@ -48,8 +48,11 @@ def attachments_from_fields(f: dict) -> list:
 
 
 def get_json(path: str, params: dict | None = None):
-    """GET a Jira REST path and return parsed JSON. Raises on HTTP/transport error."""
-    resp = jira_client.get(path, params=params)
+    """GET a Jira REST path and return parsed JSON. Raises on HTTP/transport error.
+
+    Retries transient failures (timeout/429/5xx) — GET is idempotent so safe.
+    """
+    resp = get_with_retry(jira_client, path, params=params)
     resp.raise_for_status()
     return resp.json()
 
@@ -60,7 +63,7 @@ def get_response(url: str, follow_redirects: bool = False):
     Used for binary downloads (attachments). Attachment content URLs may 302,
     so callers pass follow_redirects=True. Auth header is applied by the client.
     """
-    resp = jira_client.get(url, follow_redirects=follow_redirects)
+    resp = get_with_retry(jira_client, url, follow_redirects=follow_redirects)
     resp.raise_for_status()
     return resp
 
